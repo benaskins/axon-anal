@@ -80,7 +80,8 @@ func (ch *ClickHouse) InitSchema(ctx context.Context) error {
 			role LowCardinality(String),
 			prompt_tokens UInt32,
 			completion_tokens UInt32,
-			duration_ms UInt32
+			duration_ms UInt32,
+			run_id String DEFAULT ''
 		) ENGINE = MergeTree()
 		ORDER BY (agent_slug, timestamp)`,
 
@@ -91,7 +92,8 @@ func (ch *ClickHouse) InitSchema(ctx context.Context) error {
 			user_id LowCardinality(String),
 			tool_name LowCardinality(String),
 			success Bool,
-			duration_ms UInt32
+			duration_ms UInt32,
+			run_id String DEFAULT ''
 		) ENGINE = MergeTree()
 		ORDER BY (agent_slug, timestamp)`,
 
@@ -100,7 +102,8 @@ func (ch *ClickHouse) InitSchema(ctx context.Context) error {
 			conversation_id String,
 			agent_slug LowCardinality(String),
 			user_id LowCardinality(String),
-			event LowCardinality(String)
+			event LowCardinality(String),
+			run_id String DEFAULT ''
 		) ENGINE = MergeTree()
 		ORDER BY (agent_slug, timestamp)`,
 
@@ -109,7 +112,8 @@ func (ch *ClickHouse) InitSchema(ctx context.Context) error {
 			agent_slug LowCardinality(String),
 			user_id LowCardinality(String),
 			memory_type LowCardinality(String),
-			importance Float32
+			importance Float32,
+			run_id String DEFAULT ''
 		) ENGINE = MergeTree()
 		ORDER BY (agent_slug, timestamp)`,
 
@@ -122,7 +126,8 @@ func (ch *ClickHouse) InitSchema(ctx context.Context) error {
 			autonomy Float32,
 			reciprocity Float32,
 			playfulness Float32,
-			conflict Float32
+			conflict Float32,
+			run_id String DEFAULT ''
 		) ENGINE = MergeTree()
 		ORDER BY (agent_slug, timestamp)`,
 
@@ -131,9 +136,20 @@ func (ch *ClickHouse) InitSchema(ctx context.Context) error {
 			agent_slug LowCardinality(String),
 			user_id LowCardinality(String),
 			patterns_found UInt16,
-			memories_merged UInt16
+			memories_merged UInt16,
+			run_id String DEFAULT ''
 		) ENGINE = MergeTree()
 		ORDER BY (agent_slug, timestamp)`,
+
+		`CREATE TABLE IF NOT EXISTS events_run (
+			timestamp DateTime64(3),
+			run_id String,
+			agent_slug LowCardinality(String),
+			user_id LowCardinality(String),
+			event LowCardinality(String),
+			description String DEFAULT ''
+		) ENGINE = MergeTree()
+		ORDER BY (run_id, timestamp)`,
 	}
 
 	for _, ddl := range tables {

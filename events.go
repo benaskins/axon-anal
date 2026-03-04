@@ -11,6 +11,10 @@ type Event struct {
 	AgentSlug      string `json:"agent_slug,omitempty"`
 	UserID         string `json:"user_id,omitempty"`
 	ConversationID string `json:"conversation_id,omitempty"`
+	RunID          string `json:"run_id,omitempty"`
+
+	// run fields
+	Description string `json:"description,omitempty"`
 
 	// message fields
 	Role             string `json:"role,omitempty"`

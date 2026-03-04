@@ -47,8 +47,8 @@ func insertQuery(e Event) (string, bool) {
 	switch e.Type {
 	case "message":
 		return fmt.Sprintf(
-			"INSERT INTO events_message (timestamp, conversation_id, agent_slug, user_id, role, prompt_tokens, completion_tokens, duration_ms) VALUES ('%s', '%s', '%s', '%s', '%s', %d, %d, %d)",
-			ts, e.ConversationID, e.AgentSlug, e.UserID, e.Role, e.PromptTokens, e.CompletionTokens, e.DurationMs,
+			"INSERT INTO events_message (timestamp, conversation_id, agent_slug, user_id, role, prompt_tokens, completion_tokens, duration_ms, run_id) VALUES ('%s', '%s', '%s', '%s', '%s', %d, %d, %d, '%s')",
+			ts, e.ConversationID, e.AgentSlug, e.UserID, e.Role, e.PromptTokens, e.CompletionTokens, e.DurationMs, e.RunID,
 		), true
 
 	case "tool_invocation":
@@ -57,8 +57,8 @@ func insertQuery(e Event) (string, bool) {
 			success = *e.Success
 		}
 		return fmt.Sprintf(
-			"INSERT INTO events_tool_invocation (timestamp, conversation_id, agent_slug, user_id, tool_name, success, duration_ms) VALUES ('%s', '%s', '%s', '%s', '%s', %t, %d)",
-			ts, e.ConversationID, e.AgentSlug, e.UserID, e.ToolName, success, e.DurationMs,
+			"INSERT INTO events_tool_invocation (timestamp, conversation_id, agent_slug, user_id, tool_name, success, duration_ms, run_id) VALUES ('%s', '%s', '%s', '%s', '%s', %t, %d, '%s')",
+			ts, e.ConversationID, e.AgentSlug, e.UserID, e.ToolName, success, e.DurationMs, e.RunID,
 		), true
 
 	case "conversation_started", "conversation_ended":
@@ -67,26 +67,36 @@ func insertQuery(e Event) (string, bool) {
 			eventName = e.Type
 		}
 		return fmt.Sprintf(
-			"INSERT INTO events_conversation (timestamp, conversation_id, agent_slug, user_id, event) VALUES ('%s', '%s', '%s', '%s', '%s')",
-			ts, e.ConversationID, e.AgentSlug, e.UserID, eventName,
+			"INSERT INTO events_conversation (timestamp, conversation_id, agent_slug, user_id, event, run_id) VALUES ('%s', '%s', '%s', '%s', '%s', '%s')",
+			ts, e.ConversationID, e.AgentSlug, e.UserID, eventName, e.RunID,
 		), true
 
 	case "memory_extracted":
 		return fmt.Sprintf(
-			"INSERT INTO events_memory (timestamp, agent_slug, user_id, memory_type, importance) VALUES ('%s', '%s', '%s', '%s', %f)",
-			ts, e.AgentSlug, e.UserID, e.MemoryType, e.Importance,
+			"INSERT INTO events_memory (timestamp, agent_slug, user_id, memory_type, importance, run_id) VALUES ('%s', '%s', '%s', '%s', %f, '%s')",
+			ts, e.AgentSlug, e.UserID, e.MemoryType, e.Importance, e.RunID,
 		), true
 
 	case "relationship_snapshot":
 		return fmt.Sprintf(
-			"INSERT INTO events_relationship (timestamp, agent_slug, user_id, trust, intimacy, autonomy, reciprocity, playfulness, conflict) VALUES ('%s', '%s', '%s', %f, %f, %f, %f, %f, %f)",
-			ts, e.AgentSlug, e.UserID, e.Trust, e.Intimacy, e.Autonomy, e.Reciprocity, e.Playfulness, e.Conflict,
+			"INSERT INTO events_relationship (timestamp, agent_slug, user_id, trust, intimacy, autonomy, reciprocity, playfulness, conflict, run_id) VALUES ('%s', '%s', '%s', %f, %f, %f, %f, %f, %f, '%s')",
+			ts, e.AgentSlug, e.UserID, e.Trust, e.Intimacy, e.Autonomy, e.Reciprocity, e.Playfulness, e.Conflict, e.RunID,
 		), true
 
 	case "consolidation_completed":
 		return fmt.Sprintf(
-			"INSERT INTO events_consolidation (timestamp, agent_slug, user_id, patterns_found, memories_merged) VALUES ('%s', '%s', '%s', %d, %d)",
-			ts, e.AgentSlug, e.UserID, e.PatternsFound, e.MemoriesMerged,
+			"INSERT INTO events_consolidation (timestamp, agent_slug, user_id, patterns_found, memories_merged, run_id) VALUES ('%s', '%s', '%s', %d, %d, '%s')",
+			ts, e.AgentSlug, e.UserID, e.PatternsFound, e.MemoriesMerged, e.RunID,
+		), true
+
+	case "run_started", "run_completed":
+		event := "started"
+		if e.Type == "run_completed" {
+			event = "completed"
+		}
+		return fmt.Sprintf(
+			"INSERT INTO events_run (timestamp, run_id, agent_slug, user_id, event, description) VALUES ('%s', '%s', '%s', '%s', '%s', '%s')",
+			ts, e.RunID, e.AgentSlug, e.UserID, event, e.Description,
 		), true
 
 	default:

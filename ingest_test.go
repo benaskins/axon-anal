@@ -142,6 +142,96 @@ func TestIngestHandler_InvalidBody(t *testing.T) {
 	}
 }
 
+func TestIngestHandler_RunEvents(t *testing.T) {
+	ch := &mockClickHouse{}
+	handler := &ingestHandler{db: ch}
+
+	events := []Event{
+		{
+			Type:      "run_started",
+			Timestamp: time.Date(2026, 3, 4, 15, 30, 0, 0, time.UTC),
+			RunID:     "run-20260304-153000",
+			AgentSlug: "xagent",
+			UserID:    "user1",
+			Description: "smoke test",
+		},
+		{
+			Type:      "run_completed",
+			Timestamp: time.Date(2026, 3, 4, 15, 35, 0, 0, time.UTC),
+			RunID:     "run-20260304-153000",
+			AgentSlug: "xagent",
+			UserID:    "user1",
+			Description: "smoke test",
+		},
+	}
+
+	body, _ := json.Marshal(events)
+	req := httptest.NewRequest(http.MethodPost, "/api/events", bytes.NewReader(body))
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusAccepted {
+		t.Errorf("expected 202, got %d", w.Code)
+	}
+
+	if len(ch.execCalls) != 2 {
+		t.Fatalf("expected 2 exec calls, got %d", len(ch.execCalls))
+	}
+
+	for i, call := range ch.execCalls {
+		if !strings.Contains(call, "events_run") {
+			t.Errorf("call %d: expected events_run, got: %s", i, call)
+		}
+		if !strings.Contains(call, "run-20260304-153000") {
+			t.Errorf("call %d: expected run_id in query, got: %s", i, call)
+		}
+	}
+
+	if !strings.Contains(ch.execCalls[0], "started") {
+		t.Errorf("expected 'started' event, got: %s", ch.execCalls[0])
+	}
+	if !strings.Contains(ch.execCalls[1], "completed") {
+		t.Errorf("expected 'completed' event, got: %s", ch.execCalls[1])
+	}
+}
+
+func TestIngestHandler_RunID_OnRegularEvents(t *testing.T) {
+	ch := &mockClickHouse{}
+	handler := &ingestHandler{db: ch}
+
+	events := []Event{
+		{
+			Type:           "message",
+			Timestamp:      time.Now(),
+			AgentSlug:      "xagent",
+			UserID:         "user1",
+			ConversationID: "conv-1",
+			Role:           "user",
+			RunID:          "run-20260304-153000",
+		},
+	}
+
+	body, _ := json.Marshal(events)
+	req := httptest.NewRequest(http.MethodPost, "/api/events", bytes.NewReader(body))
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusAccepted {
+		t.Errorf("expected 202, got %d", w.Code)
+	}
+
+	if len(ch.execCalls) != 1 {
+		t.Fatalf("expected 1 exec call, got %d", len(ch.execCalls))
+	}
+
+	if !strings.Contains(ch.execCalls[0], "run_id") {
+		t.Errorf("expected run_id column in insert, got: %s", ch.execCalls[0])
+	}
+	if !strings.Contains(ch.execCalls[0], "run-20260304-153000") {
+		t.Errorf("expected run_id value in insert, got: %s", ch.execCalls[0])
+	}
+}
+
 func TestIngestHandler_UnknownEventType(t *testing.T) {
 	ch := &mockClickHouse{}
 	handler := &ingestHandler{db: ch}
