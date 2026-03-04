@@ -6,6 +6,9 @@
 
 <nav class="topbar">
   <a href="/" class="logo">Agent Analytics</a>
+  <div class="nav-links">
+    <a href="/evals" class="nav-link">Evals</a>
+  </div>
 </nav>
 
 <main class="content">
@@ -27,6 +30,21 @@
     font-weight: 600;
     letter-spacing: 0.05em;
     text-transform: uppercase;
+    color: var(--accent);
+  }
+
+  .nav-links {
+    display: flex;
+    gap: 1rem;
+    margin-left: 2rem;
+  }
+
+  .nav-link {
+    font-size: 0.8125rem;
+    color: var(--text-muted);
+  }
+
+  .nav-link:hover {
     color: var(--accent);
   }
 

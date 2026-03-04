@@ -75,3 +75,18 @@ export async function fetchRunSummary(runId) {
   const rows = await fetchApi(`/api/runs/${runId}/summary`);
   return rows[0] || {};
 }
+
+/**
+ * Fetch eval run list.
+ */
+export async function fetchEvals() {
+  return fetchApi('/api/evals');
+}
+
+/**
+ * Fetch a single eval run with full scenario/criterion details.
+ */
+export async function fetchEval(runId) {
+  const rows = await fetchApi(`/api/evals/${runId}`);
+  return rows[0] || null;
+}
