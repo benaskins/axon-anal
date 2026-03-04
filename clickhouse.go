@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 )
@@ -23,9 +24,27 @@ func NewClickHouse(baseURL string) *ClickHouse {
 	}
 }
 
+// paramURL appends param_-prefixed query parameters to the base URL.
+func (ch *ClickHouse) paramURL(params map[string]string) string {
+	if len(params) == 0 {
+		return ch.baseURL
+	}
+	u, err := url.Parse(ch.baseURL)
+	if err != nil {
+		return ch.baseURL
+	}
+	q := u.Query()
+	for k, v := range params {
+		q.Set("param_"+k, v)
+	}
+	u.RawQuery = q.Encode()
+	return u.String()
+}
+
 // Exec executes a DDL or INSERT statement.
-func (ch *ClickHouse) Exec(ctx context.Context, query string) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, ch.baseURL, strings.NewReader(query))
+func (ch *ClickHouse) Exec(ctx context.Context, query string, params map[string]string) error {
+	reqURL := ch.paramURL(params)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, reqURL, strings.NewReader(query))
 	if err != nil {
 		return fmt.Errorf("create request: %w", err)
 	}
@@ -45,8 +64,9 @@ func (ch *ClickHouse) Exec(ctx context.Context, query string) error {
 }
 
 // Query executes a SELECT and returns the raw response body.
-func (ch *ClickHouse) Query(ctx context.Context, query string) ([]byte, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, ch.baseURL, strings.NewReader(query))
+func (ch *ClickHouse) Query(ctx context.Context, query string, params map[string]string) ([]byte, error) {
+	reqURL := ch.paramURL(params)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, reqURL, strings.NewReader(query))
 	if err != nil {
 		return nil, fmt.Errorf("create request: %w", err)
 	}
@@ -169,7 +189,7 @@ func (ch *ClickHouse) InitSchema(ctx context.Context) error {
 	}
 
 	for _, ddl := range tables {
-		if err := ch.Exec(ctx, ddl); err != nil {
+		if err := ch.Exec(ctx, ddl, nil); err != nil {
 			return fmt.Errorf("init schema: %w", err)
 		}
 	}

@@ -5,14 +5,22 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
-type mockQuerier struct {
-	results map[string][]byte // query substring → response
+type queryCall struct {
+	query  string
+	params map[string]string
 }
 
-func (m *mockQuerier) Query(ctx context.Context, query string) ([]byte, error) {
+type mockQuerier struct {
+	results map[string][]byte // query substring → response
+	calls   []queryCall
+}
+
+func (m *mockQuerier) Query(ctx context.Context, query string, params map[string]string) ([]byte, error) {
+	m.calls = append(m.calls, queryCall{query: query, params: params})
 	for substr, result := range m.results {
 		if len(substr) == 0 || contains(query, substr) {
 			return result, nil
@@ -57,6 +65,17 @@ func TestStatsHandler(t *testing.T) {
 	if resp["total_conversations"] != float64(12) {
 		t.Errorf("expected total_conversations=12, got %v", resp["total_conversations"])
 	}
+
+	// Verify parameterized query
+	if len(q.calls) != 1 {
+		t.Fatalf("expected 1 query call, got %d", len(q.calls))
+	}
+	if q.calls[0].params["slug"] != "helper" {
+		t.Errorf("expected slug=helper in params, got: %v", q.calls[0].params)
+	}
+	if strings.Contains(q.calls[0].query, "'helper'") {
+		t.Errorf("slug should not be interpolated into query: %s", q.calls[0].query)
+	}
 }
 
 func TestStatsHandler_MissingSlug(t *testing.T) {
@@ -87,6 +106,13 @@ func TestMessagesHandler(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
+
+	if len(q.calls) != 1 {
+		t.Fatalf("expected 1 query call, got %d", len(q.calls))
+	}
+	if q.calls[0].params["slug"] != "helper" {
+		t.Errorf("expected slug=helper in params, got: %v", q.calls[0].params)
+	}
 }
 
 func TestToolsHandler(t *testing.T) {
@@ -104,6 +130,10 @@ func TestToolsHandler(t *testing.T) {
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	if q.calls[0].params["slug"] != "helper" {
+		t.Errorf("expected slug=helper in params, got: %v", q.calls[0].params)
 	}
 }
 
@@ -123,6 +153,10 @@ func TestRelationshipHandler(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
+
+	if q.calls[0].params["slug"] != "helper" {
+		t.Errorf("expected slug=helper in params, got: %v", q.calls[0].params)
+	}
 }
 
 func TestMemoriesHandler(t *testing.T) {
@@ -140,6 +174,10 @@ func TestMemoriesHandler(t *testing.T) {
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	if q.calls[0].params["slug"] != "helper" {
+		t.Errorf("expected slug=helper in params, got: %v", q.calls[0].params)
 	}
 }
 
@@ -164,6 +202,10 @@ func TestRunSummaryHandler(t *testing.T) {
 	json.NewDecoder(w.Body).Decode(&resp)
 	if resp["run_id"] != "run-20260304-153000" {
 		t.Errorf("expected run_id, got %v", resp["run_id"])
+	}
+
+	if q.calls[0].params["run_id"] != "run-20260304-153000" {
+		t.Errorf("expected run_id in params, got: %v", q.calls[0].params)
 	}
 }
 
@@ -193,6 +235,11 @@ func TestEvalsListHandler(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
+
+	// evalsListHandler passes nil params (no user input in query)
+	if q.calls[0].params != nil {
+		t.Errorf("expected nil params for evals list, got: %v", q.calls[0].params)
+	}
 }
 
 func TestEvalsDetailHandler(t *testing.T) {
@@ -210,6 +257,10 @@ func TestEvalsDetailHandler(t *testing.T) {
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	if q.calls[0].params["run_id"] != "run-20260304-170000" {
+		t.Errorf("expected run_id in params, got: %v", q.calls[0].params)
 	}
 }
 
@@ -239,5 +290,47 @@ func TestConversationsHandler(t *testing.T) {
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	if q.calls[0].params["slug"] != "helper" {
+		t.Errorf("expected slug=helper in params, got: %v", q.calls[0].params)
+	}
+}
+
+func TestQueryHandler_SQLInjectionRegression(t *testing.T) {
+	q := &mockQuerier{
+		results: map[string][]byte{
+			"": []byte(`{}` + "\n"),
+		},
+	}
+	handler := &statsHandler{db: q}
+
+	maliciousSlug := "' OR 1=1; --"
+	req := httptest.NewRequest(http.MethodGet, "/api/agents/test/stats", nil)
+	req.SetPathValue("slug", maliciousSlug)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	if len(q.calls) != 1 {
+		t.Fatalf("expected 1 query call, got %d", len(q.calls))
+	}
+
+	call := q.calls[0]
+
+	// The query must use placeholders, NOT interpolated values
+	if strings.Contains(call.query, maliciousSlug) {
+		t.Errorf("SQL injection: malicious input found in query string: %s", call.query)
+	}
+	if !strings.Contains(call.query, "{slug:String}") {
+		t.Errorf("expected parameterized placeholder in query, got: %s", call.query)
+	}
+
+	// The malicious value should be safely in the params map
+	if call.params["slug"] != maliciousSlug {
+		t.Errorf("expected malicious value in params map, got: %s", call.params["slug"])
 	}
 }

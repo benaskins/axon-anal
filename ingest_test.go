@@ -11,12 +11,17 @@ import (
 	"time"
 )
 
-type mockClickHouse struct {
-	execCalls []string
+type execCall struct {
+	query  string
+	params map[string]string
 }
 
-func (m *mockClickHouse) Exec(ctx context.Context, query string) error {
-	m.execCalls = append(m.execCalls, query)
+type mockClickHouse struct {
+	execCalls []execCall
+}
+
+func (m *mockClickHouse) Exec(ctx context.Context, query string, params map[string]string) error {
+	m.execCalls = append(m.execCalls, execCall{query: query, params: params})
 	return nil
 }
 
@@ -62,11 +67,21 @@ func TestIngestHandler_MessageEvent(t *testing.T) {
 		t.Fatalf("expected 2 exec calls, got %d", len(ch.execCalls))
 	}
 
-	if !strings.Contains(ch.execCalls[0], "events_message") {
-		t.Errorf("expected insert into events_message, got: %s", ch.execCalls[0])
+	if !strings.Contains(ch.execCalls[0].query, "events_message") {
+		t.Errorf("expected insert into events_message, got: %s", ch.execCalls[0].query)
 	}
-	if !strings.Contains(ch.execCalls[1], "events_tool_invocation") {
-		t.Errorf("expected insert into events_tool_invocation, got: %s", ch.execCalls[1])
+	if ch.execCalls[0].params["agent_slug"] != "helper" {
+		t.Errorf("expected agent_slug=helper, got: %s", ch.execCalls[0].params["agent_slug"])
+	}
+	if ch.execCalls[0].params["conversation_id"] != "conv-1" {
+		t.Errorf("expected conversation_id=conv-1, got: %s", ch.execCalls[0].params["conversation_id"])
+	}
+
+	if !strings.Contains(ch.execCalls[1].query, "events_tool_invocation") {
+		t.Errorf("expected insert into events_tool_invocation, got: %s", ch.execCalls[1].query)
+	}
+	if ch.execCalls[1].params["tool_name"] != "web_search" {
+		t.Errorf("expected tool_name=web_search, got: %s", ch.execCalls[1].params["tool_name"])
 	}
 }
 
@@ -106,8 +121,11 @@ func TestIngestHandler_AllEventTypes(t *testing.T) {
 		"events_consolidation",
 	}
 	for i, table := range expectedTables {
-		if !strings.Contains(ch.execCalls[i], table) {
-			t.Errorf("call %d: expected %s, got: %s", i, table, ch.execCalls[i])
+		if !strings.Contains(ch.execCalls[i].query, table) {
+			t.Errorf("call %d: expected %s, got: %s", i, table, ch.execCalls[i].query)
+		}
+		if ch.execCalls[i].params == nil {
+			t.Errorf("call %d: expected params to be non-nil", i)
 		}
 	}
 }
@@ -148,19 +166,19 @@ func TestIngestHandler_RunEvents(t *testing.T) {
 
 	events := []Event{
 		{
-			Type:      "run_started",
-			Timestamp: time.Date(2026, 3, 4, 15, 30, 0, 0, time.UTC),
-			RunID:     "run-20260304-153000",
-			AgentSlug: "xagent",
-			UserID:    "user1",
+			Type:        "run_started",
+			Timestamp:   time.Date(2026, 3, 4, 15, 30, 0, 0, time.UTC),
+			RunID:       "run-20260304-153000",
+			AgentSlug:   "xagent",
+			UserID:      "user1",
 			Description: "smoke test",
 		},
 		{
-			Type:      "run_completed",
-			Timestamp: time.Date(2026, 3, 4, 15, 35, 0, 0, time.UTC),
-			RunID:     "run-20260304-153000",
-			AgentSlug: "xagent",
-			UserID:    "user1",
+			Type:        "run_completed",
+			Timestamp:   time.Date(2026, 3, 4, 15, 35, 0, 0, time.UTC),
+			RunID:       "run-20260304-153000",
+			AgentSlug:   "xagent",
+			UserID:      "user1",
 			Description: "smoke test",
 		},
 	}
@@ -179,19 +197,19 @@ func TestIngestHandler_RunEvents(t *testing.T) {
 	}
 
 	for i, call := range ch.execCalls {
-		if !strings.Contains(call, "events_run") {
-			t.Errorf("call %d: expected events_run, got: %s", i, call)
+		if !strings.Contains(call.query, "events_run") {
+			t.Errorf("call %d: expected events_run, got: %s", i, call.query)
 		}
-		if !strings.Contains(call, "run-20260304-153000") {
-			t.Errorf("call %d: expected run_id in query, got: %s", i, call)
+		if call.params["run_id"] != "run-20260304-153000" {
+			t.Errorf("call %d: expected run_id=run-20260304-153000, got: %s", i, call.params["run_id"])
 		}
 	}
 
-	if !strings.Contains(ch.execCalls[0], "started") {
-		t.Errorf("expected 'started' event, got: %s", ch.execCalls[0])
+	if ch.execCalls[0].params["event"] != "started" {
+		t.Errorf("expected 'started' event, got: %s", ch.execCalls[0].params["event"])
 	}
-	if !strings.Contains(ch.execCalls[1], "completed") {
-		t.Errorf("expected 'completed' event, got: %s", ch.execCalls[1])
+	if ch.execCalls[1].params["event"] != "completed" {
+		t.Errorf("expected 'completed' event, got: %s", ch.execCalls[1].params["event"])
 	}
 }
 
@@ -224,11 +242,11 @@ func TestIngestHandler_RunID_OnRegularEvents(t *testing.T) {
 		t.Fatalf("expected 1 exec call, got %d", len(ch.execCalls))
 	}
 
-	if !strings.Contains(ch.execCalls[0], "run_id") {
-		t.Errorf("expected run_id column in insert, got: %s", ch.execCalls[0])
+	if !strings.Contains(ch.execCalls[0].query, "run_id") {
+		t.Errorf("expected run_id column in insert, got: %s", ch.execCalls[0].query)
 	}
-	if !strings.Contains(ch.execCalls[0], "run-20260304-153000") {
-		t.Errorf("expected run_id value in insert, got: %s", ch.execCalls[0])
+	if ch.execCalls[0].params["run_id"] != "run-20260304-153000" {
+		t.Errorf("expected run_id param, got: %s", ch.execCalls[0].params["run_id"])
 	}
 }
 
@@ -238,19 +256,19 @@ func TestIngestHandler_EvalResultEvent(t *testing.T) {
 
 	events := []Event{
 		{
-			Type:      "eval_result",
-			Timestamp: time.Date(2026, 3, 4, 17, 0, 0, 0, time.UTC),
-			RunID:     "run-20260304-170000",
-			AgentSlug: "xagent",
-			UserID:    "user1",
-			Scenario:  "greeting",
-			Response:  "Hello there!",
+			Type:       "eval_result",
+			Timestamp:  time.Date(2026, 3, 4, 17, 0, 0, 0, time.UTC),
+			RunID:      "run-20260304-170000",
+			AgentSlug:  "xagent",
+			UserID:     "user1",
+			Scenario:   "greeting",
+			Response:   "Hello there!",
 			DurationMs: 2847,
-			ToolsUsed: json.RawMessage(`["check_weather"]`),
-			Passed:    1,
-			Failed:    2,
-			Total:     3,
-			Criteria:  json.RawMessage(`[{"criterion":"min_length","pass":true,"score":1,"reason":"ok"}]`),
+			ToolsUsed:  json.RawMessage(`["check_weather"]`),
+			Passed:     1,
+			Failed:     2,
+			Total:      3,
+			Criteria:   json.RawMessage(`[{"criterion":"min_length","pass":true,"score":1,"reason":"ok"}]`),
 		},
 	}
 
@@ -267,15 +285,15 @@ func TestIngestHandler_EvalResultEvent(t *testing.T) {
 		t.Fatalf("expected 1 exec call, got %d", len(ch.execCalls))
 	}
 
-	query := ch.execCalls[0]
-	if !strings.Contains(query, "events_eval") {
-		t.Errorf("expected events_eval table, got: %s", query)
+	call := ch.execCalls[0]
+	if !strings.Contains(call.query, "events_eval") {
+		t.Errorf("expected events_eval table, got: %s", call.query)
 	}
-	if !strings.Contains(query, "greeting") {
-		t.Errorf("expected scenario name in query, got: %s", query)
+	if call.params["scenario"] != "greeting" {
+		t.Errorf("expected scenario=greeting, got: %s", call.params["scenario"])
 	}
-	if !strings.Contains(query, "run-20260304-170000") {
-		t.Errorf("expected run_id in query, got: %s", query)
+	if call.params["run_id"] != "run-20260304-170000" {
+		t.Errorf("expected run_id in params, got: %s", call.params["run_id"])
 	}
 }
 
@@ -295,5 +313,50 @@ func TestIngestHandler_UnknownEventType(t *testing.T) {
 	}
 	if len(ch.execCalls) != 0 {
 		t.Errorf("expected no exec calls for unknown event type")
+	}
+}
+
+func TestIngestHandler_SQLInjectionRegression(t *testing.T) {
+	ch := &mockClickHouse{}
+	handler := &ingestHandler{db: ch}
+
+	maliciousSlug := "' OR 1=1; --"
+	events := []Event{
+		{
+			Type:           "message",
+			Timestamp:      time.Now(),
+			AgentSlug:      maliciousSlug,
+			UserID:         "user1",
+			ConversationID: "conv-1",
+			Role:           "user",
+		},
+	}
+
+	body, _ := json.Marshal(events)
+	req := httptest.NewRequest(http.MethodPost, "/api/events", bytes.NewReader(body))
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusAccepted {
+		t.Errorf("expected 202, got %d", w.Code)
+	}
+
+	if len(ch.execCalls) != 1 {
+		t.Fatalf("expected 1 exec call, got %d", len(ch.execCalls))
+	}
+
+	call := ch.execCalls[0]
+
+	// The query must use placeholders, NOT interpolated values
+	if strings.Contains(call.query, maliciousSlug) {
+		t.Errorf("SQL injection: malicious input found in query string: %s", call.query)
+	}
+	if !strings.Contains(call.query, "{agent_slug:String}") {
+		t.Errorf("expected parameterized placeholder in query, got: %s", call.query)
+	}
+
+	// The malicious value should be in the params map (passed safely via URL params)
+	if call.params["agent_slug"] != maliciousSlug {
+		t.Errorf("expected malicious value in params map, got: %s", call.params["agent_slug"])
 	}
 }

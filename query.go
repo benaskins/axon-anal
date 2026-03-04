@@ -13,7 +13,7 @@ import (
 
 // Querier executes SELECT queries against ClickHouse.
 type Querier interface {
-	Query(ctx context.Context, query string) ([]byte, error)
+	Query(ctx context.Context, query string, params map[string]string) ([]byte, error)
 }
 
 var validPeriod = regexp.MustCompile(`^\d+[dhm]$`)
@@ -44,8 +44,8 @@ func periodFilter(param string, defaultDays int) string {
 }
 
 // writeQueryResult executes a query and writes the raw JSON response.
-func writeQueryResult(w http.ResponseWriter, r *http.Request, db Querier, query string) {
-	body, err := db.Query(r.Context(), query)
+func writeQueryResult(w http.ResponseWriter, r *http.Request, db Querier, query string, params map[string]string) {
+	body, err := db.Query(r.Context(), query, params)
 	if err != nil {
 		slog.Error("query failed", "error", err)
 		axon.WriteError(w, http.StatusInternalServerError, "query failed")
@@ -73,7 +73,7 @@ func (h *statsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	query := fmt.Sprintf(`
+	query := `
 		SELECT
 			uniqExact(conversation_id) as total_conversations,
 			count() as total_messages,
@@ -81,10 +81,11 @@ func (h *statsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			sum(completion_tokens) as total_completion_tokens,
 			avg(duration_ms) as avg_duration_ms
 		FROM events_message
-		WHERE agent_slug = '%s'
-		FORMAT JSONEachRow`, slug)
+		WHERE agent_slug = {slug:String}
+		FORMAT JSONEachRow`
+	params := map[string]string{"slug": slug}
 
-	writeQueryResult(w, r, h.db, query)
+	writeQueryResult(w, r, h.db, query, params)
 }
 
 // messagesHandler serves GET /api/agents/{slug}/messages?period=7d
@@ -109,12 +110,13 @@ func (h *messagesHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			sum(prompt_tokens) as prompt_tokens,
 			sum(completion_tokens) as completion_tokens
 		FROM events_message
-		WHERE agent_slug = '%s' AND %s
+		WHERE agent_slug = {slug:String} AND %s
 		GROUP BY day
 		ORDER BY day
-		FORMAT JSONEachRow`, slug, period)
+		FORMAT JSONEachRow`, period)
+	params := map[string]string{"slug": slug}
 
-	writeQueryResult(w, r, h.db, query)
+	writeQueryResult(w, r, h.db, query, params)
 }
 
 // toolsHandler serves GET /api/agents/{slug}/tools?period=30d
@@ -137,12 +139,13 @@ func (h *toolsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			countIf(success = true) as successes,
 			avg(duration_ms) as avg_duration_ms
 		FROM events_tool_invocation
-		WHERE agent_slug = '%s' AND %s
+		WHERE agent_slug = {slug:String} AND %s
 		GROUP BY tool_name
 		ORDER BY invocations DESC
-		FORMAT JSONEachRow`, slug, period)
+		FORMAT JSONEachRow`, period)
+	params := map[string]string{"slug": slug}
 
-	writeQueryResult(w, r, h.db, query)
+	writeQueryResult(w, r, h.db, query, params)
 }
 
 // relationshipHandler serves GET /api/agents/{slug}/relationship?period=90d
@@ -168,11 +171,12 @@ func (h *relationshipHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 			playfulness,
 			conflict
 		FROM events_relationship
-		WHERE agent_slug = '%s' AND %s
+		WHERE agent_slug = {slug:String} AND %s
 		ORDER BY timestamp
-		FORMAT JSONEachRow`, slug, period)
+		FORMAT JSONEachRow`, period)
+	params := map[string]string{"slug": slug}
 
-	writeQueryResult(w, r, h.db, query)
+	writeQueryResult(w, r, h.db, query, params)
 }
 
 // memoriesHandler serves GET /api/agents/{slug}/memories?period=30d
@@ -194,12 +198,13 @@ func (h *memoriesHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			count() as count,
 			avg(importance) as avg_importance
 		FROM events_memory
-		WHERE agent_slug = '%s' AND %s
+		WHERE agent_slug = {slug:String} AND %s
 		GROUP BY memory_type
 		ORDER BY count DESC
-		FORMAT JSONEachRow`, slug, period)
+		FORMAT JSONEachRow`, period)
+	params := map[string]string{"slug": slug}
 
-	writeQueryResult(w, r, h.db, query)
+	writeQueryResult(w, r, h.db, query, params)
 }
 
 // conversationsHandler serves GET /api/agents/{slug}/conversations
@@ -214,7 +219,7 @@ func (h *conversationsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	query := fmt.Sprintf(`
+	query := `
 		SELECT
 			m.conversation_id as conversation_id,
 			count() as messages,
@@ -223,12 +228,13 @@ func (h *conversationsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request)
 			avg(m.duration_ms) as avg_duration_ms,
 			(SELECT count() FROM events_tool_invocation t WHERE t.conversation_id = m.conversation_id) as tools_used
 		FROM events_message m
-		WHERE m.agent_slug = '%s'
+		WHERE m.agent_slug = {slug:String}
 		GROUP BY m.conversation_id
 		ORDER BY max(m.timestamp) DESC
-		FORMAT JSONEachRow`, slug)
+		FORMAT JSONEachRow`
+	params := map[string]string{"slug": slug}
 
-	writeQueryResult(w, r, h.db, query)
+	writeQueryResult(w, r, h.db, query, params)
 }
 
 // evalsListHandler serves GET /api/evals — lists eval runs with aggregate scores.
@@ -250,7 +256,7 @@ func (h *evalsListHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		ORDER BY timestamp DESC
 		FORMAT JSONEachRow`
 
-	writeQueryResult(w, r, h.db, query)
+	writeQueryResult(w, r, h.db, query, nil)
 }
 
 // evalsDetailHandler serves GET /api/evals/{run_id} — full scenario details for a run.
@@ -265,7 +271,7 @@ func (h *evalsDetailHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	query := fmt.Sprintf(`
+	query := `
 		SELECT
 			run_id,
 			scenario,
@@ -277,11 +283,12 @@ func (h *evalsDetailHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			total,
 			criteria
 		FROM events_eval
-		WHERE run_id = '%s'
+		WHERE run_id = {run_id:String}
 		ORDER BY timestamp
-		FORMAT JSONEachRow`, runID)
+		FORMAT JSONEachRow`
+	params := map[string]string{"run_id": runID}
 
-	writeQueryResult(w, r, h.db, query)
+	writeQueryResult(w, r, h.db, query, params)
 }
 
 // runsHandler serves GET /api/runs — lists available runs
@@ -302,7 +309,7 @@ func (h *runsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		ORDER BY started_at DESC
 		FORMAT JSONEachRow`
 
-	writeQueryResult(w, r, h.db, query)
+	writeQueryResult(w, r, h.db, query, nil)
 }
 
 // runSummaryHandler serves GET /api/runs/{run_id}/summary
@@ -317,17 +324,17 @@ func (h *runSummaryHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	query := fmt.Sprintf(`
+	query := `
 		SELECT
-			'%s' as run_id,
-			(SELECT count() FROM events_message WHERE run_id = '%s') as messages,
-			(SELECT count() FROM events_tool_invocation WHERE run_id = '%s') as tool_invocations,
-			(SELECT uniqExact(conversation_id) FROM events_message WHERE run_id = '%s') as conversations,
-			(SELECT count() FROM events_memory WHERE run_id = '%s') as memories,
-			(SELECT count() FROM events_relationship WHERE run_id = '%s') as relationship_snapshots,
-			(SELECT count() FROM events_consolidation WHERE run_id = '%s') as consolidations
-		FORMAT JSONEachRow`,
-		runID, runID, runID, runID, runID, runID, runID)
+			{run_id:String} as run_id,
+			(SELECT count() FROM events_message WHERE run_id = {run_id:String}) as messages,
+			(SELECT count() FROM events_tool_invocation WHERE run_id = {run_id:String}) as tool_invocations,
+			(SELECT uniqExact(conversation_id) FROM events_message WHERE run_id = {run_id:String}) as conversations,
+			(SELECT count() FROM events_memory WHERE run_id = {run_id:String}) as memories,
+			(SELECT count() FROM events_relationship WHERE run_id = {run_id:String}) as relationship_snapshots,
+			(SELECT count() FROM events_consolidation WHERE run_id = {run_id:String}) as consolidations
+		FORMAT JSONEachRow`
+	params := map[string]string{"run_id": runID}
 
-	writeQueryResult(w, r, h.db, query)
+	writeQueryResult(w, r, h.db, query, params)
 }
