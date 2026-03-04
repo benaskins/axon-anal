@@ -297,6 +297,15 @@ func TestConversationsHandler(t *testing.T) {
 	}
 }
 
+func TestPeriodFilter_RejectsMaliciousInput(t *testing.T) {
+	// Malicious period values should fall through to defaults
+	result := periodFilter("1d; DROP TABLE", 7)
+	expected := "timestamp >= now() - INTERVAL 7 DAY"
+	if result != expected {
+		t.Errorf("expected default filter %q for malicious input, got: %q", expected, result)
+	}
+}
+
 func TestQueryHandler_SQLInjectionRegression(t *testing.T) {
 	q := &mockQuerier{
 		results: map[string][]byte{

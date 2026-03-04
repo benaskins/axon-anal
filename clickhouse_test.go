@@ -135,7 +135,7 @@ func TestClickHouse_InitSchema(t *testing.T) {
 	}
 
 	// Should create all event tables
-	tableNames := []string{"events_message", "events_tool_invocation", "events_conversation", "events_memory", "events_relationship", "events_consolidation"}
+	tableNames := []string{"events_message", "events_tool_invocation", "events_conversation", "events_memory", "events_relationship", "events_consolidation", "events_eval", "events_run"}
 	for _, name := range tableNames {
 		found := false
 		for _, q := range queries {

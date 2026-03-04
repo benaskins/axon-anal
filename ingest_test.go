@@ -297,6 +297,81 @@ func TestIngestHandler_EvalResultEvent(t *testing.T) {
 	}
 }
 
+func TestIngestHandler_ConversationEndedEvent(t *testing.T) {
+	ch := &mockClickHouse{}
+	handler := &ingestHandler{db: ch}
+
+	events := []Event{
+		{
+			Type:           "conversation_ended",
+			Timestamp:      time.Date(2026, 3, 4, 14, 30, 0, 0, time.UTC),
+			ConversationID: "conv-1",
+			AgentSlug:      "helper",
+			UserID:         "user1",
+		},
+	}
+
+	body, _ := json.Marshal(events)
+	req := httptest.NewRequest(http.MethodPost, "/api/events", bytes.NewReader(body))
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusAccepted {
+		t.Errorf("expected 202, got %d: %s", w.Code, w.Body.String())
+	}
+
+	if len(ch.execCalls) != 1 {
+		t.Fatalf("expected 1 exec call, got %d", len(ch.execCalls))
+	}
+
+	call := ch.execCalls[0]
+	if !strings.Contains(call.query, "events_conversation") {
+		t.Errorf("expected events_conversation table, got: %s", call.query)
+	}
+	if call.params["event"] != "conversation_ended" {
+		t.Errorf("expected event=conversation_ended, got: %s", call.params["event"])
+	}
+}
+
+func TestIngestHandler_ToolInvocationNilSuccess(t *testing.T) {
+	ch := &mockClickHouse{}
+	handler := &ingestHandler{db: ch}
+
+	events := []Event{
+		{
+			Type:           "tool_invocation",
+			Timestamp:      time.Date(2026, 3, 4, 14, 0, 1, 0, time.UTC),
+			ConversationID: "conv-1",
+			AgentSlug:      "helper",
+			UserID:         "user1",
+			ToolName:       "web_search",
+			Success:        nil,
+			DurationMs:     500,
+		},
+	}
+
+	body, _ := json.Marshal(events)
+	req := httptest.NewRequest(http.MethodPost, "/api/events", bytes.NewReader(body))
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusAccepted {
+		t.Errorf("expected 202, got %d: %s", w.Code, w.Body.String())
+	}
+
+	if len(ch.execCalls) != 1 {
+		t.Fatalf("expected 1 exec call, got %d", len(ch.execCalls))
+	}
+
+	call := ch.execCalls[0]
+	if !strings.Contains(call.query, "events_tool_invocation") {
+		t.Errorf("expected events_tool_invocation table, got: %s", call.query)
+	}
+	if call.params["success"] != "false" {
+		t.Errorf("expected success=false for nil Success, got: %s", call.params["success"])
+	}
+}
+
 func TestIngestHandler_UnknownEventType(t *testing.T) {
 	ch := &mockClickHouse{}
 	handler := &ingestHandler{db: ch}
