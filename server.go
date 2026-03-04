@@ -30,6 +30,12 @@ func (s *Server) Handler() http.Handler {
 
 	if s.ch != nil {
 		mux.Handle("POST /api/events", &ingestHandler{db: s.ch})
+		mux.Handle("GET /api/agents/{slug}/stats", &statsHandler{db: s.ch})
+		mux.Handle("GET /api/agents/{slug}/messages", &messagesHandler{db: s.ch})
+		mux.Handle("GET /api/agents/{slug}/tools", &toolsHandler{db: s.ch})
+		mux.Handle("GET /api/agents/{slug}/relationship", &relationshipHandler{db: s.ch})
+		mux.Handle("GET /api/agents/{slug}/memories", &memoriesHandler{db: s.ch})
+		mux.Handle("GET /api/agents/{slug}/conversations", &conversationsHandler{db: s.ch})
 	}
 
 	s.mux = mux
