@@ -1,6 +1,7 @@
 package anal
 
 import (
+	"embed"
 	"net/http"
 
 	"github.com/benaskins/axon"
@@ -8,13 +9,14 @@ import (
 
 // Server is the analytics service HTTP server.
 type Server struct {
-	mux *http.ServeMux
-	ch  *ClickHouse
+	mux         *http.ServeMux
+	ch          *ClickHouse
+	staticFiles *embed.FS
 }
 
 // NewServer creates an analytics server.
-func NewServer(ch ...*ClickHouse) *Server {
-	s := &Server{}
+func NewServer(staticFiles *embed.FS, ch ...*ClickHouse) *Server {
+	s := &Server{staticFiles: staticFiles}
 	if len(ch) > 0 {
 		s.ch = ch[0]
 	}
@@ -36,6 +38,11 @@ func (s *Server) Handler() http.Handler {
 		mux.Handle("GET /api/agents/{slug}/relationship", &relationshipHandler{db: s.ch})
 		mux.Handle("GET /api/agents/{slug}/memories", &memoriesHandler{db: s.ch})
 		mux.Handle("GET /api/agents/{slug}/conversations", &conversationsHandler{db: s.ch})
+	}
+
+	// SPA fallback for SvelteKit dashboard
+	if s.staticFiles != nil {
+		mux.Handle("/", axon.SPAHandler(*s.staticFiles, "static"))
 	}
 
 	s.mux = mux

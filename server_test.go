@@ -7,7 +7,7 @@ import (
 )
 
 func TestServer_Health(t *testing.T) {
-	s := NewServer()
+	s := NewServer(nil)
 	handler := s.Handler()
 
 	req := httptest.NewRequest(http.MethodGet, "/health", nil)
