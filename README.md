@@ -1,4 +1,4 @@
-# axon-anal
+# axon-look
 
 An analytics event ingestion and query service backed by ClickHouse.
 
@@ -7,7 +7,7 @@ Accepts structured events via HTTP, stores them in typed tables, and exposes que
 ## Install
 
 ```
-go get github.com/benaskins/axon-anal@latest
+go get github.com/benaskins/axon-look@latest
 ```
 
 Requires Go 1.24+.
@@ -15,10 +15,10 @@ Requires Go 1.24+.
 ## Usage
 
 ```go
-ch := anal.NewClickHouse(clickhouseURL)
+ch := look.NewClickHouse(clickhouseURL)
 ch.InitSchema(ctx)
 
-srv := anal.NewServer(ch, ch)
+srv := look.NewServer(ch, ch)
 http.Handle("/", srv)
 ```
 

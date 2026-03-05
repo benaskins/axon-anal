@@ -1,4 +1,4 @@
-module github.com/benaskins/axon-anal
+module github.com/benaskins/axon-look
 
 go 1.24.1
 
